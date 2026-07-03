@@ -32,15 +32,9 @@
   #boardWrap { position: relative; width: 100%; }
   canvas { display: block; width: 100%; border-radius: 16px; }
 
-  #controls { display: flex; justify-content: center; gap: 40px; padding: 14px 0 10px; }
-  .ctrl-btn {
-    width: 72px; height: 72px; border-radius: 50%; border: none; cursor: pointer;
-    background: rgba(255,255,255,.1); color: #fff; font-size: 32px;
-    display: flex; align-items: center; justify-content: center;
-    transition: transform .1s, background .2s;
-  }
-  .ctrl-btn:active { transform: scale(.92); background: rgba(255,255,255,.22); }
-  #hint { text-align: center; font-size: 13px; color: #8b93b8; min-height: 18px; }
+  #hint { text-align: center; font-size: 13px; color: #8b93b8; min-height: 20px; padding-top: 10px; }
+  #scoreRow { text-align: center; font-size: 14px; color: #8b93b8; padding-top: 6px; }
+  #scoreRow b { color: #FFD740; font-size: 18px; }
 
   .overlay {
     position: fixed; inset: 0; background: rgba(10,13,26,.92);
@@ -92,21 +86,18 @@
   <div id="hud">
     <div class="hud-box"><div class="hud-label">Level</div><div class="hud-value" id="levelVal">1</div></div>
     <div class="hud-box"><div class="hud-label">Goal</div><div class="hud-value" id="goalChip"><span id="goalDot"></span><span id="goalVal">0/0</span></div></div>
-    <div class="hud-box"><div class="hud-label">Moves</div><div class="hud-value" id="movesVal">12</div></div>
+    <div class="hud-box"><div class="hud-label">Moves</div><div class="hud-value" id="movesVal">18</div></div>
   </div>
   <div id="boardWrap"><canvas id="cv"></canvas></div>
+  <div id="scoreRow">Score: <b id="scoreVal">0</b></div>
   <div id="hint"></div>
-  <div id="controls">
-    <button class="ctrl-btn" id="btnCCW" aria-label="Rotate left">&#8634;</button>
-    <button class="ctrl-btn" id="btnCW" aria-label="Rotate right">&#8635;</button>
-  </div>
 </div>
 
 <button id="soundBtn">&#128266;</button>
 
 <div id="menu" class="overlay">
   <h1><span class="g1">Gravity</span> <span class="g2">P</span><span class="g3">o</span><span class="g1">p</span></h1>
-  <div class="subtitle">Rotate the board. Let colors fall. Pop!</div>
+  <div class="subtitle">Tap to pop. Match 4+ to earn boosters!</div>
   <button class="big-btn" id="btnPlay">Play</button>
   <button class="ghost-btn" id="btnLevels">Levels</button>
 </div>
@@ -131,6 +122,7 @@
 // ---------- constants ----------
 const COLORS = ['#FF5252','#40C4FF','#FFD740','#69F0AE','#B388FF','#FF9E43'];
 const COLORS_DARK = ['#B03232','#2A87B3','#B39528','#46A876','#7B5FB3','#B36E2E'];
+const BOMB = 100; // board value BOMB + color = color booster
 const SAVE_KEY = 'gravityPopSave';
 
 // ---------- save / load ----------
@@ -156,41 +148,54 @@ function tone(freq, dur, type, vol, when) {
   o.connect(g); g.connect(a.destination);
   o.start(t); o.stop(t + dur + .05);
 }
-function sndRotate() { tone(180, .15, 'triangle', .1); }
-function sndPop(combo) { tone(320 + combo * 90, .12, 'square', .12); tone(640 + combo * 90, .08, 'sine', .08); }
-function sndLand() { tone(120, .06, 'sine', .06); }
+function sndPop(size) { tone(280 + size * 45, .12, 'square', .12); tone(560 + size * 45, .08, 'sine', .08); }
+function sndBomb() { tone(150, .35, 'sawtooth', .16); [500, 700, 900].forEach((f, i) => tone(f, .15, 'square', .1, i * .06)); }
+function sndBooster() { tone(660, .12, 'triangle', .12); tone(990, .15, 'triangle', .12, .08); }
+function sndDeny() { tone(140, .1, 'sine', .08); }
+function sndLand() { tone(120, .06, 'sine', .05); }
 function sndWin() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .25, 'triangle', .14, i * .13)); }
 function sndLose() { [330, 262, 196].forEach((f, i) => tone(f, .3, 'sawtooth', .08, i * .16)); }
 
 // ---------- level config ----------
 function levelConfig(n) {
-  const size = n < 5 ? 6 : n < 15 ? 7 : 8;
-  const colorCount = n < 8 ? 4 : n < 20 ? 5 : 6;
-  const moves = Math.min(16, 11 + Math.floor(n / 5));
+  const size = n < 5 ? 7 : n < 15 ? 8 : 9;
+  const colorCount = n < 6 ? 4 : n < 18 ? 5 : 6;
+  const moves = 18;
   const goalType = (n >= 3 && n % 3 === 0) ? 'color' : 'any';
   return { n, size, colorCount, moves, goalType };
 }
 
 // ---------- board helpers ----------
-function findMatches(b) {
-  const N = b.length, seen = b.map(row => row.map(() => false)), groups = [];
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (!b[r][c] || seen[r][c]) continue;
-    const col = b[r][c], stack = [[r, c]], grp = [];
-    seen[r][c] = true;
-    while (stack.length) {
-      const [y, x] = stack.pop(); grp.push([y, x]);
-      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-      for (let i = 0; i < 4; i++) {
-        const ny = y + dirs[i][0], nx = x + dirs[i][1];
-        if (ny >= 0 && ny < N && nx >= 0 && nx < N && !seen[ny][nx] && b[ny][nx] === col) {
-          seen[ny][nx] = true; stack.push([ny, nx]);
-        }
+function isBall(v) { return v >= 1 && v < BOMB; }
+function ballColor(v) { return v >= BOMB ? v - BOMB : v; }
+function floodGroup(b, r, c) {
+  const N = b.length, col = b[r][c];
+  if (!isBall(col)) return [];
+  const seen = b.map(row => row.map(() => false));
+  const stack = [[r, c]], grp = [];
+  seen[r][c] = true;
+  while (stack.length) {
+    const [y, x] = stack.pop(); grp.push([y, x]);
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let i = 0; i < 4; i++) {
+      const ny = y + dirs[i][0], nx = x + dirs[i][1];
+      if (ny >= 0 && ny < N && nx >= 0 && nx < N && !seen[ny][nx] && b[ny][nx] === col) {
+        seen[ny][nx] = true; stack.push([ny, nx]);
       }
     }
-    if (grp.length >= 3) groups.push(grp);
   }
-  return groups;
+  return grp;
+}
+function hasMove(b) {
+  const N = b.length;
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const v = b[r][c];
+    if (v >= BOMB) return true;
+    if (!isBall(v)) continue;
+    if (r + 1 < N && b[r + 1][c] === v) return true;
+    if (c + 1 < N && b[r][c + 1] === v) return true;
+  }
+  return false;
 }
 function applyGravity(b) {
   const N = b.length, falls = [];
@@ -205,51 +210,29 @@ function applyGravity(b) {
   }
   return falls;
 }
-function rotateMatrix(b, dir) {
-  const N = b.length, res = b.map(row => row.map(() => 0));
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (dir === 1) res[c][N - 1 - r] = b[r][c];
-    else res[N - 1 - c][r] = b[r][c];
-  }
-  return res;
-}
 function generateBoard(cfg) {
-  const N = cfg.size, total = Math.round(N * N * 0.78);
-  const b = Array.from({ length: N }, () => Array(N).fill(0));
-  const cells = [];
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) cells.push([r, c]);
-  for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cells[i]; cells[i] = cells[j]; cells[j] = t; }
-  for (let i = 0; i < total; i++) b[cells[i][0]][cells[i][1]] = 1 + Math.floor(Math.random() * cfg.colorCount);
-  applyGravity(b);
+  const N = cfg.size;
+  let b;
   let guard = 0;
-  while (guard++ < 300) {
-    const groups = findMatches(b);
-    if (!groups.length) break;
-    for (const grp of groups) {
-      const [r, c] = grp[Math.floor(Math.random() * grp.length)];
-      let nv = 1 + Math.floor(Math.random() * cfg.colorCount);
-      if (nv === b[r][c]) nv = (nv % cfg.colorCount) + 1;
-      b[r][c] = nv;
-    }
-  }
+  do {
+    b = Array.from({ length: N }, () => Array.from({ length: N }, () => 1 + Math.floor(Math.random() * cfg.colorCount)));
+  } while (!hasMove(b) && guard++ < 20);
   return b;
 }
 function countBalls(b) { let n = 0; for (const row of b) for (const v of row) if (v) n++; return n; }
-function countColor(b, col) { let n = 0; for (const row of b) for (const v of row) if (v === col) n++; return n; }
 
 // ---------- game state ----------
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let board = [], cfg = null, level = 1;
 let moves = 0, score = 0, goal = { type: 'any', color: 0, target: 0, progress: 0 };
-let busy = false, playing = false, movedOnce = false;
-let boardAngle = 0;           // radians, whole-board rotation during move
+let busy = false, playing = false;
 let offY = [], velY = [], popScale = {};
 let particles = [], floats = [];
 let cell = 0, pad = 8, dpr = 1, cssSize = 0;
 
 function resize() {
   const wrap = document.getElementById('boardWrap');
-  cssSize = Math.min(wrap.clientWidth, Math.floor(window.innerHeight * 0.62));
+  cssSize = Math.min(wrap.clientWidth, Math.floor(window.innerHeight * 0.66));
   dpr = window.devicePixelRatio || 1;
   cv.style.width = cssSize + 'px'; cv.style.height = cssSize + 'px';
   cv.width = Math.round(cssSize * dpr); cv.height = Math.round(cssSize * dpr);
@@ -263,19 +246,17 @@ function startLevel(n) {
   moves = cfg.moves; score = 0;
   offY = board.map(row => row.map(() => 0));
   velY = board.map(row => row.map(() => 0));
-  popScale = {}; particles = []; floats = []; boardAngle = 0;
-  const total = countBalls(board);
+  popScale = {}; particles = []; floats = [];
   if (cfg.goalType === 'color') {
-    let best = 1, bestN = 0;
-    for (let col = 1; col <= cfg.colorCount; col++) { const k = countColor(board, col); if (k > bestN) { bestN = k; best = col; } }
-    goal = { type: 'color', color: best, target: Math.max(6, Math.floor(bestN * 0.6)), progress: 0 };
+    const color = 1 + Math.floor(Math.random() * cfg.colorCount);
+    goal = { type: 'color', color, target: Math.min(45, 14 + n), progress: 0 };
   } else {
-    goal = { type: 'any', color: 0, target: Math.round(total * Math.min(0.62, 0.42 + n * 0.012)), progress: 0 };
+    goal = { type: 'any', color: 0, target: Math.min(95, 42 + n * 3), progress: 0 };
   }
-  busy = false; playing = true; movedOnce = false;
+  busy = false; playing = true;
   resize();
   updateHUD();
-  document.getElementById('hint').textContent = n === 1 ? 'Swipe or tap a button to rotate the board' : '';
+  document.getElementById('hint').textContent = n === 1 ? 'Tap 2+ matching balls to pop them. Pop 4+ at once for a booster!' : '';
   show('game');
 }
 
@@ -288,12 +269,12 @@ function updateHUD() {
   if (goal.type === 'color') { dot.style.background = COLORS[goal.color - 1]; dot.style.display = 'inline-block'; }
   else { dot.style.display = 'none'; }
   document.getElementById('goalVal').textContent = Math.min(goal.progress, goal.target) + '/' + goal.target;
+  document.getElementById('scoreVal').textContent = score;
 }
 
 // ---------- animation engine ----------
 let anims = [];
 function runAnim(a) { anims.push(a); return new Promise(res => { a._done = res; }); }
-function wait(ms) { return new Promise(res => setTimeout(res, ms)); }
 
 let lastT = performance.now();
 function loop(t) {
@@ -310,11 +291,11 @@ function loop(t) {
     const f = floats[i]; f.y -= 40 * dt; f.life -= dt;
     if (f.life <= 0) floats.splice(i, 1);
   }
-  draw();
+  draw(t / 1000);
   requestAnimationFrame(loop);
 }
 
-function draw() {
+function draw(now) {
   if (!cfg) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssSize, cssSize);
@@ -326,10 +307,6 @@ function draw() {
     roundRect(pad + c * cell + 2, pad + r * cell + 2, cell - 4, cell - 4, Math.max(4, cell * 0.18));
     ctx.fill();
   }
-  const cx = cssSize / 2, cy = cssSize / 2;
-  const rotScale = 1 - 0.29 * Math.abs(Math.sin(boardAngle * 2));
-  ctx.save();
-  ctx.translate(cx, cy); ctx.rotate(boardAngle); ctx.scale(rotScale, rotScale); ctx.translate(-cx, -cy);
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     const v = board[r][c]; if (!v) continue;
     const key = r + '_' + c;
@@ -337,9 +314,8 @@ function draw() {
     if (sc <= 0) continue;
     const x = pad + c * cell + cell / 2;
     const y = pad + r * cell + cell / 2 + offY[r][c];
-    drawBall(x, y, cell * 0.42 * sc, v);
+    drawBall(x, y, cell * 0.42 * sc, v, now);
   }
-  ctx.restore();
   for (const p of particles) {
     ctx.globalAlpha = Math.max(0, p.life / 0.6);
     ctx.fillStyle = p.color;
@@ -364,33 +340,68 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-function drawBall(x, y, rad, v) {
-  ctx.fillStyle = COLORS_DARK[v - 1];
+function drawBall(x, y, rad, v, now) {
+  const bomb = v >= BOMB;
+  const col = ballColor(v);
+  if (bomb) rad *= 1 + 0.07 * Math.sin(now * 5);
+  ctx.fillStyle = COLORS_DARK[col - 1];
   ctx.beginPath(); ctx.arc(x, y + rad * 0.08, rad, 0, 7); ctx.fill();
-  ctx.fillStyle = COLORS[v - 1];
+  ctx.fillStyle = COLORS[col - 1];
   ctx.beginPath(); ctx.arc(x, y, rad * 0.96, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.beginPath(); ctx.arc(x - rad * 0.32, y - rad * 0.34, rad * 0.22, 0, 7); ctx.fill();
+  if (bomb) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = Math.max(1.5, rad * 0.09);
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.8, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 ' + Math.round(rad * 1.1) + 'px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('★', x, y + rad * 0.06);
+    ctx.textBaseline = 'alphabetic';
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(x - rad * 0.32, y - rad * 0.34, rad * 0.22, 0, 7); ctx.fill();
+  }
 }
 
 // ---------- move sequence ----------
-async function animateRotation(dir) {
-  sndRotate();
-  const target = dir * Math.PI / 2, dur = 0.28;
-  let t = 0;
+async function animatePop(cells, big) {
+  let points = 0;
+  for (const [r, c] of cells) {
+    const v = board[r][c], col = ballColor(v);
+    points += big ? 15 : 10;
+    if (goal.type === 'any' || col === goal.color) goal.progress++;
+    const x = pad + c * cell + cell / 2, y = pad + r * cell + cell / 2;
+    for (let i = 0; i < 6; i++) {
+      const a = Math.random() * Math.PI * 2, sp = cell * (1.5 + Math.random() * 2.5);
+      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - cell * 1.5, life: 0.6, color: COLORS[col - 1], size: cell * 0.09 });
+    }
+  }
+  if (cells.length > 3) points += 25;
+  score += points;
+  if (navigator.vibrate) { try { navigator.vibrate(big ? 60 : 20); } catch (e) {} }
+  const [fr, fc] = cells[0];
+  floats.push({ text: '+' + points, x: pad + fc * cell + cell / 2, y: pad + fr * cell + cell / 2, life: 0.8, size: Math.round(cssSize * 0.05), color: '#FFD740' });
+  updateHUD();
+  const dur = 0.22; let t = 0;
   await runAnim({ update(dt) {
     t += dt; const p = Math.min(1, t / dur);
-    const e = 1 - Math.pow(1 - p, 3);
-    boardAngle = target * e;
+    for (const [r, c] of cells) popScale[r + '_' + c] = (1 - p) * 1.15;
     return p < 1;
   }});
-  board = rotateMatrix(board, dir);
-  boardAngle = 0;
+  for (const [r, c] of cells) { board[r][c] = 0; delete popScale[r + '_' + c]; }
 }
-async function animateGravity() {
+async function animateGravityAndRefill() {
   const falls = applyGravity(board);
-  if (!falls.length) return;
   for (const f of falls) { offY[f.to][f.col] = -(f.to - f.from) * cell; velY[f.to][f.col] = 0; }
+  for (let c = 0; c < cfg.size; c++) {
+    let e = 0;
+    while (e < cfg.size && !board[e][c]) e++;
+    for (let r = 0; r < e; r++) {
+      board[r][c] = 1 + Math.floor(Math.random() * cfg.colorCount);
+      offY[r][c] = -(e * cell + cell * 0.4);
+      velY[r][c] = 0;
+    }
+  }
   const g = cell * 42;
   let landed = false;
   await runAnim({ update(dt) {
@@ -406,58 +417,65 @@ async function animateGravity() {
     return moving;
   }});
 }
-async function animatePop(groups, combo) {
-  const cells = [];
-  for (const grp of groups) for (const rc of grp) cells.push(rc);
-  sndPop(combo);
-  if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} }
-  let points = 0;
-  for (const grp of groups) points += grp.length * 10 * combo;
-  score += points;
-  for (const [r, c] of cells) {
-    const v = board[r][c];
-    if (goal.type === 'any' || v === goal.color) goal.progress++;
-    const x = pad + c * cell + cell / 2, y = pad + r * cell + cell / 2;
-    for (let i = 0; i < 6; i++) {
-      const a = Math.random() * Math.PI * 2, sp = cell * (1.5 + Math.random() * 2.5);
-      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - cell * 1.5, life: 0.6, color: COLORS[v - 1], size: cell * 0.09 });
+function ensurePlayable() {
+  let guard = 0;
+  while (!hasMove(board) && guard++ < 30) {
+    const vals = [];
+    for (let r = 0; r < cfg.size; r++) for (let c = 0; c < cfg.size; c++) {
+      if (isBall(board[r][c])) vals.push(board[r][c]);
     }
+    for (let i = vals.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1)); const t = vals[i]; vals[i] = vals[j]; vals[j] = t;
+    }
+    let k = 0;
+    for (let r = 0; r < cfg.size; r++) for (let c = 0; c < cfg.size; c++) {
+      if (isBall(board[r][c])) board[r][c] = vals[k++];
+    }
+    if (guard === 1) floats.push({ text: 'Shuffle!', x: cssSize / 2, y: cssSize / 2, life: 1, size: Math.round(cssSize * 0.07), color: '#40C4FF' });
   }
-  updateHUD();
-  if (combo >= 2) {
-    floats.push({ text: 'Combo x' + combo + '!', x: cssSize / 2, y: cssSize / 2, life: 0.9, size: Math.round(cssSize * 0.08), color: '#FFD740' });
-  }
-  const dur = 0.22; let t = 0;
-  await runAnim({ update(dt) {
-    t += dt; const p = Math.min(1, t / dur);
-    for (const [r, c] of cells) popScale[r + '_' + c] = (1 - p) * 1.15;
-    return p < 1;
-  }});
-  for (const [r, c] of cells) { board[r][c] = 0; delete popScale[r + '_' + c]; }
 }
-async function doMove(dir) {
+async function tapCell(r, c) {
   if (busy || !playing) return;
-  busy = true; movedOnce = true;
+  const v = board[r][c];
+  if (!v) return;
   document.getElementById('hint').textContent = '';
-  moves--; updateHUD();
-  await animateRotation(dir);
-  let combo = 0;
-  while (true) {
-    await animateGravity();
-    const groups = findMatches(board);
-    if (!groups.length) break;
-    combo++;
-    await animatePop(groups, combo);
+  if (v >= BOMB) {
+    busy = true; moves--; updateHUD();
+    const col = v - BOMB;
+    const cells = [];
+    for (let rr = 0; rr < cfg.size; rr++) for (let cc = 0; cc < cfg.size; cc++) {
+      if (ballColor(board[rr][cc]) === col && board[rr][cc] !== 0) cells.push([rr, cc]);
+    }
+    sndBomb();
+    floats.push({ text: 'BOOM!', x: cssSize / 2, y: cssSize / 2, life: 1, size: Math.round(cssSize * 0.09), color: COLORS[col - 1] });
+    await animatePop(cells, true);
+    await animateGravityAndRefill();
+    ensurePlayable();
+    checkEnd();
+    busy = false;
+    return;
   }
+  const grp = floodGroup(board, r, c);
+  if (grp.length < 2) { sndDeny(); return; }
+  busy = true; moves--; updateHUD();
+  const makeBooster = grp.length > 3;
+  const popCells = makeBooster ? grp.filter(rc => !(rc[0] === r && rc[1] === c)) : grp;
+  sndPop(Math.min(8, grp.length));
+  await animatePop(popCells, false);
+  if (makeBooster) {
+    board[r][c] = BOMB + v;
+    sndBooster();
+    floats.push({ text: 'Booster!', x: pad + c * cell + cell / 2, y: pad + r * cell, life: 1, size: Math.round(cssSize * 0.055), color: '#fff' });
+  }
+  await animateGravityAndRefill();
+  ensurePlayable();
   checkEnd();
   busy = false;
 }
 function checkEnd() {
   if (!playing) return;
-  const cleared = countBalls(board) === 0;
-  if (goal.progress >= goal.target || cleared) {
+  if (goal.progress >= goal.target) {
     playing = false;
-    if (cleared) { score += 500; goal.progress = goal.target; updateHUD(); }
     const ratio = moves / cfg.moves;
     const stars = ratio >= 0.3 ? 3 : ratio >= 0.1 ? 2 : 1;
     const prev = save.stars[level] || 0;
@@ -508,25 +526,12 @@ function buildLevelGrid() {
 }
 
 // ---------- input ----------
-document.getElementById('btnCCW').addEventListener('click', () => doMove(-1));
-document.getElementById('btnCW').addEventListener('click', () => doMove(1));
-document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowLeft') doMove(-1);
-  if (e.key === 'ArrowRight') doMove(1);
-});
-let touchX = null;
-cv.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
-cv.addEventListener('touchend', e => {
-  if (touchX === null) return;
-  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
-  if (dx > 30) doMove(1); else if (dx < -30) doMove(-1);
-}, { passive: true });
-let mouseX = null;
-cv.addEventListener('mousedown', e => { mouseX = e.clientX; });
-window.addEventListener('mouseup', e => {
-  if (mouseX === null) return;
-  const dx = e.clientX - mouseX; mouseX = null;
-  if (dx > 30) doMove(1); else if (dx < -30) doMove(-1);
+cv.addEventListener('pointerdown', e => {
+  if (!cfg) return;
+  const rect = cv.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const c = Math.floor((x - pad) / cell), r = Math.floor((y - pad) / cell);
+  if (r >= 0 && r < cfg.size && c >= 0 && c < cfg.size) tapCell(r, c);
 });
 
 document.getElementById('btnPlay').addEventListener('click', () => { audio(); startLevel(save.unlocked); });
