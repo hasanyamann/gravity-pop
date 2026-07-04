@@ -20,7 +20,7 @@
   }
   #app { width: 100%; max-width: 440px; height: 100%; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom); }
 
-  #hud { display: flex; justify-content: space-between; align-items: center; padding: 12px 4px 8px; gap: 8px; }
+  #hud { display: flex; justify-content: space-between; align-items: center; padding: 12px 4px 6px; gap: 8px; }
   .hud-box { background: rgba(255,255,255,.07); border-radius: 12px; padding: 6px 12px; text-align: center; min-width: 72px; }
   .hud-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #8b93b8; }
   .hud-value { font-size: 20px; font-weight: 700; }
@@ -29,12 +29,28 @@
   #goalChip { display: flex; align-items: center; justify-content: center; gap: 6px; }
   #goalDot { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
 
+  #goalBarWrap { height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; margin: 0 4px 8px; overflow: hidden; }
+  #goalBar { height: 100%; width: 0%; background: linear-gradient(90deg, #40C4FF, #69F0AE); border-radius: 4px; transition: width .4s ease; }
+
   #boardWrap { position: relative; width: 100%; }
   canvas { display: block; width: 100%; border-radius: 16px; }
+  #intro {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: none; opacity: 0; transition: opacity .3s;
+  }
+  #intro.show { opacity: 1; }
+  #introLevel { font-size: 40px; font-weight: 800; text-shadow: 0 4px 20px rgba(0,0,0,.6); }
+  #introGoal { font-size: 16px; color: #cdd4f0; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 
-  #hint { text-align: center; font-size: 13px; color: #8b93b8; min-height: 20px; padding-top: 10px; }
-  #scoreRow { text-align: center; font-size: 14px; color: #8b93b8; padding-top: 6px; }
+  #scoreRow { display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 14px; color: #8b93b8; padding-top: 8px; }
   #scoreRow b { color: #FFD740; font-size: 18px; }
+  #streakBadge {
+    background: linear-gradient(135deg, #FF9E43, #FF5252); color: #fff; font-weight: 800;
+    padding: 3px 12px; border-radius: 20px; font-size: 14px; display: none;
+  }
+  #streakBadge.show { display: inline-block; animation: streakIn .25s; }
+  @keyframes streakIn { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+  #hint { text-align: center; font-size: 13px; color: #8b93b8; min-height: 20px; padding-top: 8px; }
 
   .overlay {
     position: fixed; inset: 0; background: rgba(10,13,26,.92);
@@ -44,7 +60,8 @@
   .hidden { display: none !important; }
   h1 { font-size: 44px; margin-bottom: 6px; letter-spacing: -1px; }
   h1 .g1 { color: #40C4FF; } h1 .g2 { color: #FFD740; } h1 .g3 { color: #FF5252; }
-  .subtitle { color: #8b93b8; margin-bottom: 34px; font-size: 15px; }
+  .subtitle { color: #8b93b8; margin-bottom: 10px; font-size: 15px; }
+  #totalStars { color: #FFD740; font-size: 16px; font-weight: 700; margin-bottom: 26px; }
   .big-btn {
     background: linear-gradient(135deg, #40C4FF, #7C6BFF); color: #fff; border: none;
     font-size: 20px; font-weight: 700; padding: 15px 60px; border-radius: 40px;
@@ -86,10 +103,14 @@
   <div id="hud">
     <div class="hud-box"><div class="hud-label">Level</div><div class="hud-value" id="levelVal">1</div></div>
     <div class="hud-box"><div class="hud-label">Goal</div><div class="hud-value" id="goalChip"><span id="goalDot"></span><span id="goalVal">0/0</span></div></div>
-    <div class="hud-box"><div class="hud-label">Moves</div><div class="hud-value" id="movesVal">18</div></div>
+    <div class="hud-box"><div class="hud-label">Moves</div><div class="hud-value" id="movesVal">15</div></div>
   </div>
-  <div id="boardWrap"><canvas id="cv"></canvas></div>
-  <div id="scoreRow">Score: <b id="scoreVal">0</b></div>
+  <div id="goalBarWrap"><div id="goalBar"></div></div>
+  <div id="boardWrap">
+    <canvas id="cv"></canvas>
+    <div id="intro"><div id="introLevel"></div><div id="introGoal"></div></div>
+  </div>
+  <div id="scoreRow">Score: <b id="scoreVal">0</b> <span id="streakBadge">x1</span></div>
   <div id="hint"></div>
 </div>
 
@@ -97,7 +118,8 @@
 
 <div id="menu" class="overlay">
   <h1><span class="g1">Gravity</span> <span class="g2">P</span><span class="g3">o</span><span class="g1">p</span></h1>
-  <div class="subtitle">Tap to pop. Match 4+ to earn boosters!</div>
+  <div class="subtitle">Pop 4+ for a rocket. Pop 6+ for a color bomb!</div>
+  <div id="totalStars"></div>
   <button class="big-btn" id="btnPlay">Play</button>
   <button class="ghost-btn" id="btnLevels">Levels</button>
 </div>
@@ -122,7 +144,8 @@
 // ---------- constants ----------
 const COLORS = ['#FF5252','#40C4FF','#FFD740','#69F0AE','#B388FF','#FF9E43'];
 const COLORS_DARK = ['#B03232','#2A87B3','#B39528','#46A876','#7B5FB3','#B36E2E'];
-const BOMB = 100; // board value BOMB + color = color booster
+const BOMB = 100;   // BOMB + color   = color bomb (destroys all of its color)
+const ROCKET = 200; // ROCKET + color = rocket (clears its row + column)
 const SAVE_KEY = 'gravityPopSave';
 
 // ---------- save / load ----------
@@ -150,9 +173,12 @@ function tone(freq, dur, type, vol, when) {
 }
 function sndPop(size) { tone(280 + size * 45, .12, 'square', .12); tone(560 + size * 45, .08, 'sine', .08); }
 function sndBomb() { tone(150, .35, 'sawtooth', .16); [500, 700, 900].forEach((f, i) => tone(f, .15, 'square', .1, i * .06)); }
+function sndRocket() { tone(600, .25, 'sawtooth', .12); tone(200, .3, 'triangle', .12, .05); }
 function sndBooster() { tone(660, .12, 'triangle', .12); tone(990, .15, 'triangle', .12, .08); }
+function sndStreak(mult) { tone(440 + mult * 110, .15, 'triangle', .13); tone(660 + mult * 110, .2, 'sine', .1, .08); }
 function sndDeny() { tone(140, .1, 'sine', .08); }
 function sndLand() { tone(120, .06, 'sine', .05); }
+function sndBonus(i) { tone(500 + i * 70, .13, 'square', .12); }
 function sndWin() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .25, 'triangle', .14, i * .13)); }
 function sndLose() { [330, 262, 196].forEach((f, i) => tone(f, .3, 'sawtooth', .08, i * .16)); }
 
@@ -160,14 +186,14 @@ function sndLose() { [330, 262, 196].forEach((f, i) => tone(f, .3, 'sawtooth', .
 function levelConfig(n) {
   const size = n < 5 ? 7 : n < 15 ? 8 : 9;
   const colorCount = n < 6 ? 4 : n < 18 ? 5 : 6;
-  const moves = 18;
+  const moves = 15;
   const goalType = (n >= 3 && n % 3 === 0) ? 'color' : 'any';
   return { n, size, colorCount, moves, goalType };
 }
 
 // ---------- board helpers ----------
 function isBall(v) { return v >= 1 && v < BOMB; }
-function ballColor(v) { return v >= BOMB ? v - BOMB : v; }
+function ballColor(v) { return v >= ROCKET ? v - ROCKET : v >= BOMB ? v - BOMB : v; }
 function floodGroup(b, r, c) {
   const N = b.length, col = b[r][c];
   if (!isBall(col)) return [];
@@ -219,20 +245,42 @@ function generateBoard(cfg) {
   } while (!hasMove(b) && guard++ < 20);
   return b;
 }
-function countBalls(b) { let n = 0; for (const row of b) for (const v of row) if (v) n++; return n; }
+// expand boosters recursively: rockets clear row+col, bombs clear their color
+function collectDestroy(startCells) {
+  const N = cfg.size, seen = {}, queue = startCells.slice(), out = [];
+  while (queue.length) {
+    const rc = queue.shift();
+    const r = rc[0], c = rc[1], key = r + '_' + c;
+    if (seen[key]) continue; seen[key] = true;
+    const v = board[r][c];
+    if (!v) continue;
+    out.push([r, c]);
+    if (v >= ROCKET) {
+      for (let i = 0; i < N; i++) { queue.push([r, i]); queue.push([i, c]); }
+    } else if (v >= BOMB) {
+      const col = v - BOMB;
+      for (let rr = 0; rr < N; rr++) for (let cc = 0; cc < N; cc++) {
+        if (board[rr][cc] && ballColor(board[rr][cc]) === col) queue.push([rr, cc]);
+      }
+    }
+  }
+  return out;
+}
 
 // ---------- game state ----------
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let board = [], cfg = null, level = 1;
 let moves = 0, score = 0, goal = { type: 'any', color: 0, target: 0, progress: 0 };
 let busy = false, playing = false;
+let streak = 0, mult = 1;
 let offY = [], velY = [], popScale = {};
-let particles = [], floats = [];
+let particles = [], floats = [], wiggles = {}, lands = {};
+let shake = 0;
 let cell = 0, pad = 8, dpr = 1, cssSize = 0;
 
 function resize() {
   const wrap = document.getElementById('boardWrap');
-  cssSize = Math.min(wrap.clientWidth, Math.floor(window.innerHeight * 0.66));
+  cssSize = Math.min(wrap.clientWidth, Math.floor(window.innerHeight * 0.62));
   dpr = window.devicePixelRatio || 1;
   cv.style.width = cssSize + 'px'; cv.style.height = cssSize + 'px';
   cv.width = Math.round(cssSize * dpr); cv.height = Math.round(cssSize * dpr);
@@ -243,21 +291,26 @@ window.addEventListener('resize', resize);
 function startLevel(n) {
   level = n; cfg = levelConfig(n);
   board = generateBoard(cfg);
-  moves = cfg.moves; score = 0;
+  moves = cfg.moves; score = 0; streak = 0; mult = 1;
   offY = board.map(row => row.map(() => 0));
   velY = board.map(row => row.map(() => 0));
-  popScale = {}; particles = []; floats = [];
+  popScale = {}; particles = []; floats = []; wiggles = {}; lands = {}; shake = 0;
   if (cfg.goalType === 'color') {
     const color = 1 + Math.floor(Math.random() * cfg.colorCount);
     goal = { type: 'color', color, target: Math.min(45, 14 + n), progress: 0 };
   } else {
-    goal = { type: 'any', color: 0, target: Math.min(95, 42 + n * 3), progress: 0 };
+    goal = { type: 'any', color: 0, target: Math.min(90, 40 + n * 3), progress: 0 };
   }
   busy = false; playing = true;
   resize();
   updateHUD();
-  document.getElementById('hint').textContent = n === 1 ? 'Tap 2+ matching balls to pop them. Pop 4+ at once for a booster!' : '';
+  document.getElementById('hint').textContent = n === 1 ? 'Tap 2+ matching balls. Pop 4+ for a rocket, 6+ for a color bomb!' : '';
   show('game');
+  const intro = document.getElementById('intro');
+  document.getElementById('introLevel').textContent = 'Level ' + n;
+  document.getElementById('introGoal').textContent = goal.type === 'color' ? 'Pop ' + goal.target + ' of one color' : 'Pop ' + goal.target + ' balls';
+  intro.classList.add('show');
+  setTimeout(() => intro.classList.remove('show'), 1300);
 }
 
 function updateHUD() {
@@ -269,12 +322,17 @@ function updateHUD() {
   if (goal.type === 'color') { dot.style.background = COLORS[goal.color - 1]; dot.style.display = 'inline-block'; }
   else { dot.style.display = 'none'; }
   document.getElementById('goalVal').textContent = Math.min(goal.progress, goal.target) + '/' + goal.target;
+  document.getElementById('goalBar').style.width = Math.min(100, goal.progress / goal.target * 100) + '%';
   document.getElementById('scoreVal').textContent = score;
+  const sb = document.getElementById('streakBadge');
+  if (mult > 1) { sb.textContent = 'x' + mult; sb.classList.add('show'); }
+  else sb.classList.remove('show');
 }
 
 // ---------- animation engine ----------
 let anims = [];
 function runAnim(a) { anims.push(a); return new Promise(res => { a._done = res; }); }
+function wait(ms) { return new Promise(res => setTimeout(res, ms)); }
 
 let lastT = performance.now();
 function loop(t) {
@@ -291,6 +349,9 @@ function loop(t) {
     const f = floats[i]; f.y -= 40 * dt; f.life -= dt;
     if (f.life <= 0) floats.splice(i, 1);
   }
+  for (const k in wiggles) { wiggles[k] -= dt; if (wiggles[k] <= 0) delete wiggles[k]; }
+  for (const k in lands) { lands[k] -= dt; if (lands[k] <= 0) delete lands[k]; }
+  shake = Math.max(0, shake - dt * 26);
   draw(t / 1000);
   requestAnimationFrame(loop);
 }
@@ -299,6 +360,7 @@ function draw(now) {
   if (!cfg) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssSize, cssSize);
+  if (shake > 0.2) ctx.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake);
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
   roundRect(0, 0, cssSize, cssSize, 16); ctx.fill();
   const N = cfg.size;
@@ -310,9 +372,14 @@ function draw(now) {
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     const v = board[r][c]; if (!v) continue;
     const key = r + '_' + c;
-    const sc = popScale[key] !== undefined ? popScale[key] : 1;
+    let sc = popScale[key] !== undefined ? popScale[key] : 1;
     if (sc <= 0) continue;
-    const x = pad + c * cell + cell / 2;
+    if (lands[key] !== undefined) {
+      const p = 1 - lands[key] / 0.16;
+      sc *= 1 - 0.14 * Math.sin(Math.PI * p);
+    }
+    let x = pad + c * cell + cell / 2;
+    if (wiggles[key] !== undefined) x += Math.sin(wiggles[key] * 45) * cell * 0.06;
     const y = pad + r * cell + cell / 2 + offY[r][c];
     drawBall(x, y, cell * 0.42 * sc, v, now);
   }
@@ -341,9 +408,9 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 function drawBall(x, y, rad, v, now) {
-  const bomb = v >= BOMB;
+  const rocket = v >= ROCKET, bomb = !rocket && v >= BOMB;
   const col = ballColor(v);
-  if (bomb) rad *= 1 + 0.07 * Math.sin(now * 5);
+  if (rocket || bomb) rad *= 1 + 0.07 * Math.sin(now * 5);
   ctx.fillStyle = COLORS_DARK[col - 1];
   ctx.beginPath(); ctx.arc(x, y + rad * 0.08, rad, 0, 7); ctx.fill();
   ctx.fillStyle = COLORS[col - 1];
@@ -357,6 +424,14 @@ function drawBall(x, y, rad, v, now) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('★', x, y + rad * 0.06);
     ctx.textBaseline = 'alphabetic';
+  } else if (rocket) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.lineWidth = Math.max(2, rad * 0.2);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - rad * 0.55, y); ctx.lineTo(x + rad * 0.55, y);
+    ctx.moveTo(x, y - rad * 0.55); ctx.lineTo(x, y + rad * 0.55);
+    ctx.stroke();
   } else {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.beginPath(); ctx.arc(x - rad * 0.32, y - rad * 0.34, rad * 0.22, 0, 7); ctx.fill();
@@ -377,8 +452,10 @@ async function animatePop(cells, big) {
     }
   }
   if (cells.length > 3) points += 25;
+  points *= mult;
   score += points;
   if (navigator.vibrate) { try { navigator.vibrate(big ? 60 : 20); } catch (e) {} }
+  if (cells.length >= 6 || big) shake = Math.min(12, 4 + cells.length * 0.5);
   const [fr, fc] = cells[0];
   floats.push({ text: '+' + points, x: pad + fc * cell + cell / 2, y: pad + fr * cell + cell / 2, life: 0.8, size: Math.round(cssSize * 0.05), color: '#FFD740' });
   updateHUD();
@@ -390,27 +467,33 @@ async function animatePop(cells, big) {
   }});
   for (const [r, c] of cells) { board[r][c] = 0; delete popScale[r + '_' + c]; }
 }
-async function animateGravityAndRefill() {
+async function animateGravityAndRefill(noRefill) {
   const falls = applyGravity(board);
   for (const f of falls) { offY[f.to][f.col] = -(f.to - f.from) * cell; velY[f.to][f.col] = 0; }
-  for (let c = 0; c < cfg.size; c++) {
-    let e = 0;
-    while (e < cfg.size && !board[e][c]) e++;
-    for (let r = 0; r < e; r++) {
-      board[r][c] = 1 + Math.floor(Math.random() * cfg.colorCount);
-      offY[r][c] = -(e * cell + cell * 0.4);
-      velY[r][c] = 0;
+  if (!noRefill) {
+    for (let c = 0; c < cfg.size; c++) {
+      let e = 0;
+      while (e < cfg.size && !board[e][c]) e++;
+      for (let r = 0; r < e; r++) {
+        board[r][c] = 1 + Math.floor(Math.random() * cfg.colorCount);
+        offY[r][c] = -(e * cell + cell * 0.4);
+        velY[r][c] = 0;
+      }
     }
   }
   const g = cell * 42;
-  let landed = false;
+  let landedSound = false;
   await runAnim({ update(dt) {
     let moving = false;
     for (let r = 0; r < cfg.size; r++) for (let c = 0; c < cfg.size; c++) {
       if (offY[r][c] < 0) {
         velY[r][c] += g * dt;
         offY[r][c] += velY[r][c] * dt;
-        if (offY[r][c] >= 0) { offY[r][c] = 0; if (!landed) { landed = true; sndLand(); } }
+        if (offY[r][c] >= 0) {
+          offY[r][c] = 0;
+          lands[r + '_' + c] = 0.16;
+          if (!landedSound) { landedSound = true; sndLand(); }
+        }
         else moving = true;
       }
     }
@@ -434,20 +517,29 @@ function ensurePlayable() {
     if (guard === 1) floats.push({ text: 'Shuffle!', x: cssSize / 2, y: cssSize / 2, life: 1, size: Math.round(cssSize * 0.07), color: '#40C4FF' });
   }
 }
+function bumpStreak(qualifies) {
+  const oldMult = mult;
+  if (qualifies) streak++; else streak = 0;
+  mult = Math.min(4, 1 + streak);
+  if (mult > oldMult) {
+    sndStreak(mult);
+    floats.push({ text: 'Streak x' + mult + '!', x: cssSize / 2, y: cssSize * 0.35, life: 1, size: Math.round(cssSize * 0.075), color: '#FF9E43' });
+  }
+}
 async function tapCell(r, c) {
   if (busy || !playing) return;
   const v = board[r][c];
   if (!v) return;
   document.getElementById('hint').textContent = '';
   if (v >= BOMB) {
-    busy = true; moves--; updateHUD();
-    const col = v - BOMB;
-    const cells = [];
-    for (let rr = 0; rr < cfg.size; rr++) for (let cc = 0; cc < cfg.size; cc++) {
-      if (ballColor(board[rr][cc]) === col && board[rr][cc] !== 0) cells.push([rr, cc]);
-    }
-    sndBomb();
+    busy = true; moves--;
+    bumpStreak(true);
+    updateHUD();
+    const cells = collectDestroy([[r, c]]);
+    const col = ballColor(v);
+    if (v >= ROCKET) { sndRocket(); } else { sndBomb(); }
     floats.push({ text: 'BOOM!', x: cssSize / 2, y: cssSize / 2, life: 1, size: Math.round(cssSize * 0.09), color: COLORS[col - 1] });
+    shake = 10;
     await animatePop(cells, true);
     await animateGravityAndRefill();
     ensurePlayable();
@@ -456,34 +548,67 @@ async function tapCell(r, c) {
     return;
   }
   const grp = floodGroup(board, r, c);
-  if (grp.length < 2) { sndDeny(); return; }
-  busy = true; moves--; updateHUD();
-  const makeBooster = grp.length > 3;
-  const popCells = makeBooster ? grp.filter(rc => !(rc[0] === r && rc[1] === c)) : grp;
+  if (grp.length < 2) { sndDeny(); wiggles[r + '_' + c] = 0.3; return; }
+  busy = true; moves--;
+  bumpStreak(grp.length > 3);
+  updateHUD();
+  const boosterType = grp.length >= 6 ? BOMB : grp.length > 3 ? ROCKET : 0;
+  const popCells = boosterType ? grp.filter(rc => !(rc[0] === r && rc[1] === c)) : grp;
   sndPop(Math.min(8, grp.length));
   await animatePop(popCells, false);
-  if (makeBooster) {
-    board[r][c] = BOMB + v;
+  if (boosterType) {
+    board[r][c] = boosterType + v;
     sndBooster();
-    floats.push({ text: 'Booster!', x: pad + c * cell + cell / 2, y: pad + r * cell, life: 1, size: Math.round(cssSize * 0.055), color: '#fff' });
+    floats.push({ text: boosterType === BOMB ? 'Color bomb!' : 'Rocket!', x: pad + c * cell + cell / 2, y: pad + r * cell, life: 1, size: Math.round(cssSize * 0.055), color: '#fff' });
   }
   await animateGravityAndRefill();
   ensurePlayable();
   checkEnd();
   busy = false;
 }
+async function finishWin() {
+  const ratio = moves / cfg.moves;
+  const stars = ratio >= 0.3 ? 3 : ratio >= 0.1 ? 2 : 1;
+  const prev = save.stars[level] || 0;
+  if (stars > prev) save.stars[level] = stars;
+  if (level + 1 > save.unlocked) save.unlocked = level + 1;
+  persist();
+  const bonus = Math.min(moves, 8);
+  if (bonus > 0) {
+    floats.push({ text: 'Moves bonus!', x: cssSize / 2, y: cssSize * 0.3, life: 1.2, size: Math.round(cssSize * 0.07), color: '#69F0AE' });
+    await wait(500);
+    const picked = [];
+    for (let i = 0; i < bonus; i++) {
+      let tries = 0, rr, cc;
+      do { rr = Math.floor(Math.random() * cfg.size); cc = Math.floor(Math.random() * cfg.size); tries++; }
+      while ((!board[rr][cc] || picked.indexOf(rr + '_' + cc) >= 0) && tries < 50);
+      if (!board[rr][cc]) continue;
+      picked.push(rr + '_' + cc);
+      moves--; updateHUD();
+      sndBonus(i);
+      score += 50;
+      const x = pad + cc * cell + cell / 2, y = pad + rr * cell + cell / 2;
+      const col = ballColor(board[rr][cc]);
+      for (let k = 0; k < 10; k++) {
+        const a = Math.random() * Math.PI * 2, sp = cell * (2 + Math.random() * 3);
+        particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - cell * 2, life: 0.6, color: COLORS[col - 1], size: cell * 0.1 });
+      }
+      board[rr][cc] = 0;
+      floats.push({ text: '+50', x, y, life: 0.7, size: Math.round(cssSize * 0.045), color: '#69F0AE' });
+      shake = 5;
+      await wait(130);
+    }
+    updateHUD();
+    await wait(300);
+  }
+  sndWin();
+  setTimeout(() => showResult(true, stars), 500);
+}
 function checkEnd() {
   if (!playing) return;
   if (goal.progress >= goal.target) {
     playing = false;
-    const ratio = moves / cfg.moves;
-    const stars = ratio >= 0.3 ? 3 : ratio >= 0.1 ? 2 : 1;
-    const prev = save.stars[level] || 0;
-    if (stars > prev) save.stars[level] = stars;
-    if (level + 1 > save.unlocked) save.unlocked = level + 1;
-    persist();
-    sndWin();
-    setTimeout(() => showResult(true, stars), 600);
+    finishWin();
   } else if (moves <= 0) {
     playing = false;
     sndLose();
@@ -497,6 +622,11 @@ function show(id) {
   document.getElementById('levels').classList.add('hidden');
   document.getElementById('result').classList.add('hidden');
   if (id !== 'game') document.getElementById(id).classList.remove('hidden');
+  if (id === 'menu') {
+    let total = 0;
+    for (const k in save.stars) total += save.stars[k];
+    document.getElementById('totalStars').textContent = total > 0 ? '★ ' + total : '';
+  }
 }
 function showResult(won, stars) {
   document.getElementById('resultTitle').textContent = won ? 'Level complete!' : 'Out of moves';
@@ -552,6 +682,7 @@ offY = board.map(row => row.map(() => 0));
 velY = board.map(row => row.map(() => 0));
 resize();
 updateHUD();
+show('menu');
 requestAnimationFrame(loop);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

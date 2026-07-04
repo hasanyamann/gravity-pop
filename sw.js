@@ -1,4 +1,4 @@
-const CACHE = 'gravity-pop-v2';
+const CACHE = 'gravity-pop-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
