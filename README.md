@@ -31,3 +31,12 @@ A puzzle game where you can't move the balls — you rotate the whole board!
 ## Tech
 
 Single-file HTML5 canvas game. No frameworks, no build step.
+
+---
+
+## Also in this repo: `evcharger/`
+
+An unrelated side project — a self-hosted OCPP 1.6J server for a Vestel
+home EV charger, with a phone UI for live kW / kWh / elapsed time and
+remote start-stop, plus a charger simulator for testing. See
+[`evcharger/README.md`](evcharger/README.md) (Turkish).
